@@ -157,6 +157,18 @@ describe("session analysis", () => {
     const all = [...s.preamble, ...s.turns.flatMap((t) => [...t.calls, ...t.nested])];
     expect(all.filter((c) => c.compaction).map((c) => c.id)).toEqual(["2026-01-01T00-00-02-000_x"]);
   });
+
+  it("finds the /compact prompt when a role:system message follows it", () => {
+    const env = { role: "system", content: "# Environment update\n - Primary working directory: /x" };
+    const c = [
+      parseCapture("2026-01-01T00-00-01-000_x", req(m1), sse([textBlock(0, "ok")])),
+      parseCapture("2026-01-01T00-00-02-000_x", req([...m1, a2, u("Your task is to create a detailed summary of the conversation so far"), env]), sse([textBlock(0, "<summary>")])),
+      parseCapture("2026-01-01T00-00-03-000_x", req([u("This session is being continued… summary"), u("next question")]), sse([textBlock(0, "answer")])),
+    ];
+    const a = analyseSession(c);
+    expect(a[1].kind).toBe("side");
+    expect(a[1].label).toMatch(/^compaction/);
+  });
 });
 
 describe("subagents", () => {

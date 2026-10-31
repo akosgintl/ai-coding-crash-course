@@ -261,7 +261,7 @@ export function messageKey(m: Message): string[] {
 
 /**
  * Prompts the harness itself sends on a fork of a thread (not typed by you).
- * Matched against the last text of the request.
+ * Matched against the text of the request's last user message.
  */
 export const COMPACTION_LABEL = "compaction — /compact summary that replaces the history";
 
@@ -273,7 +273,9 @@ export const HARNESS_FORKS:{ re: RegExp; label: string }[] = [
 ];
 
 function harnessFork(messages: Message[]): string | null {
-  const last = messages[messages.length - 1];
+  // The harness may append role:"system" messages (e.g. "# Environment update") after the
+  // fork prompt, so look at the last user message rather than the last message.
+  const last = [...messages].reverse().find((m) => m.role === "user");
   const text = last?.blocks.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n") ?? "";
   return HARNESS_FORKS.find((f) => f.re.test(text))?.label ?? null;
 }
