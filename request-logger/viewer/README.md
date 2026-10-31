@@ -52,6 +52,81 @@ your account and device ids. Point it at another folder with `LOGS_DIR=...`.
 - **Context composition** — an *estimate*: the call's real token count split by
   the character share of system prompt, tool schemas, history and new content.
 
+## Using it with another repo's request-logger
+
+The viewer only needs a folder of captures (`*.request.txt` + `*.response.txt`
+pairs written by `request-logger/proxy.ts`). It never imports the proxy, so
+there are two ways to use it elsewhere.
+
+### Option A — no copy: point this viewer at the other logs folder
+
+```bash
+LOGS_DIR=/home/gintla/projects/cohort-005-project/request-logger/logs \
+  npm --prefix request-logger/viewer run dev
+```
+
+Run it from this repo. The other repo is not touched, and new captures appear
+live because the viewer watches whatever `LOGS_DIR` points to. Only one viewer
+can run at a time, because the port is fixed at 5180 (`strictPort`).
+
+### Option B — copy the viewer into the other repo
+
+Steps, with `cohort-005-project` as the example target, which has the same
+`request-logger/` layout:
+
+1. **Copy the package without its dependencies or build output:**
+
+   ```bash
+   rsync -a --exclude node_modules --exclude dist \
+     request-logger/viewer/ /home/gintla/projects/cohort-005-project/request-logger/viewer/
+   ```
+
+   By default it reads `../logs` relative to itself (`vite.config.ts`), so
+   `request-logger/viewer` next to `request-logger/logs` works with no config.
+2. **Install its own dependencies.** It is a standalone package, with its own
+   `package.json`, lockfile and `.gitignore` for `node_modules`:
+
+   ```bash
+   npm --prefix request-logger/viewer install
+   ```
+
+3. **Add the start script** to the target's root `package.json`:
+
+   ```json
+   "logs-ui": "npm --prefix request-logger/viewer run dev"
+   ```
+
+4. **Keep the root tooling out of the viewer.** Without this, the root
+   `tsc`/`vitest` pick up its files and fail, because it has a different
+   tsconfig and no `~/*` paths.
+   - In the root `tsconfig.json`, `"include": ["**/*"]` matches the viewer, so add:
+
+     ```json
+     "exclude": ["node_modules", "request-logger/viewer"],
+     ```
+
+   - In the root `vitest.config.ts`, add it to `test.exclude`:
+
+     ```ts
+     exclude: [...configDefaults.exclude, "request-logger/viewer/**"],
+     ```
+
+5. **Check that the logs stay out of git.** The target's `.gitignore` should
+   already have `/request-logger/logs/*`; the captures contain your prompts,
+   code and account/device ids.
+6. **Verify the copy:**
+
+   ```bash
+   npm --prefix request-logger/viewer run typecheck
+   npm --prefix request-logger/viewer test
+   npm run logs-ui     # → http://localhost:5180
+   ```
+
+**Keeping copies in sync:** the copy does not follow this one, so fixes such as
+new `HARNESS_FORKS` patterns in `server/parse.ts` have to be re-copied. Repeat
+step 1; rsync keeps the other repo's `node_modules`. If you want one source of
+truth instead, use Option A.
+
 ## How it works
 
 `server/plugin.ts` is a Vite plugin that serves `/api/*` from the dev server
